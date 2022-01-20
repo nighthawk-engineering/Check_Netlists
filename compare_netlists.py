@@ -47,6 +47,8 @@ from sortedcontainers import SortedDict #
 from collections import deque,OrderedDict # 
 from netComp import *
 
+import pdb
+
 #######################################################################
 
 progname = basename(argv[0])

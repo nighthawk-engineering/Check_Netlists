@@ -37,12 +37,14 @@ import json
 import csv
 #import time
 import re
-#import os
+import os
 #import subprocess
 from Local import *  # atoi, defined, mkType, readFile
 from os.path import isfile,exists,basename
 from sortedcontainers import SortedDict # 
 from collections import deque,OrderedDict # 
+
+import pdb
 
 #
 #######################################################################
@@ -68,15 +70,17 @@ def getFileType(root):
     print('ERROR: Cannot find file with root "%s"'%root); exit(1)
 
 def isFileHere(root,ext):
+    here = '.\\'
+    # here = ''
     if len(root):
-        if exists('.\\'+root+'_'+ext):
+        if exists(here+root+'_'+ext):
             return(root+'_'+ext)
-        elif exists('.\\'+root+ext):
+        elif exists(here+root+ext):
             return(root+ext)
-        elif exists('.\\'+root):
+        elif exists(here+root):
             return(root)
-    elif exists('.\\'+ext):
-            return('.\\'+ext)
+    elif exists(here+ext):
+            return(here+ext)
     return(None)
 
 def checkFileHere(root,ext,abort=False):
@@ -126,7 +130,7 @@ Data structure of readOrcadPstChip output, displayed in JSON format:
 '''
 # Read a pstchip.dat file from OrCad netlist generator
 def readOrcadPstChip(fname):
-    fname = checkFileHere(fname,'pstchip.dat')
+    fname = checkFileHere(fname,'pstchip.dat',abort=True)
     flines = readNetFile(fname)
     #
     primFlag = False; pinFlag = False; bodyFlag = False
@@ -275,7 +279,7 @@ Data structure of readOrcadPstChip output, displayed in JSON format:
 '''
 # Read a pstxnet.dat file from OrCad netlist generator
 def readOrcadPstXnet(fname):
-    fname = checkFileHere(fname,'pstxnet.dat')
+    fname = checkFileHere(fname,'pstxnet.dat',abort=True)
     flines = readNetFile(fname)
     netFlag = False; nodeFlag = False
     xnets = SortedDict({
@@ -375,7 +379,7 @@ Data structure of readOrcadPstXprt output, displayed in JSON format:
 '''
 # Read a pstxprt.dat file from OrCad netlist generator
 def readOrcadPstXprt(fname):
-    fname = checkFileHere(fname,'pstxprt.dat')
+    fname = checkFileHere(fname,'pstxprt.dat',abort=True)
     flines = readNetFile(fname)
     #
     dirFlag = False; prtFlag = False; roomFlag = False; secFlag = False
@@ -683,7 +687,10 @@ Data structure of readAllegroNets output, displayed in JSON format:
 '''
 # Read a cpn_rep.rpt file from Allegro report generator
 def readAllegroNets(fname):
+    # print('readAllegroNets:',fname)
     fname = checkFileHere(fname,'cpn_rep.rpt')
+    if not defined(fname):
+        print('Error: readAllegroNets: fname not defined'); exit(1)
     # assume it can be read as a CSV file, which it can, for the most part
     def incDefName(last):
         # Found a non-named net? Give it a generic name
@@ -693,6 +700,7 @@ def readAllegroNets(fname):
     #
     cpnRep = []
     defNName = 0
+    # print(os.getcwd()+'\\'+str(fname))
     with open(fname, 'r') as f:
         sread = csv.reader(f)  # assume it's a CSV format file
         for row in sread:
@@ -794,7 +802,7 @@ Data structure of readAltiumNets output, displayed in JSON format:
 '''
 # Read a net_rep.rpt file from Allegro report generator
 def readAltiumNets(fname):
-    fname = checkFileHere(fname,'.NET')
+    fname = checkFileHere(fname,'.NET',abort=True)
     flines = readNetFile(fname)
     #print('#flines:\n%s'%'\n'.join(flines))
     #
@@ -987,7 +995,7 @@ def addOrcadProps(self):
         #
         self.empty = []
         for ref,propDct in props.items():
-            if propDct['insert'] is not 'I':
+            if propDct['insert'] != 'I':
                 self.empty.append(ref)
 
 ##############################################################################
@@ -1436,7 +1444,7 @@ class Netlist:
             #exit(1)
         return(nets[0])
     
-#################
+    #################
     def isPowerNet(self,net):
         if not defined(self._powerNets):
             self.findPowerNets()
@@ -1516,7 +1524,7 @@ class Netlist:
             Net = self.XnetXref[Net]
         return(Net)
         
-#########################
+    #########################
     '''
     Given a net Net1, start from source refdes sRef, is this an extended net, Xnet?
     '''
@@ -1590,7 +1598,7 @@ class Netlist:
                     byXnet[netName] = refDct.copy()
         return([byXnet, XnetXref])
     
-######################
+    ######################
     def getAllegroDevs(self):
         #byNet = self.byNet.copy()
         byNet = self.Allegro.nets['NETS'].copy()  # We're deleting stuff, so make a copy
@@ -1718,7 +1726,7 @@ class Netlist:
             print('ERROR: "%s" filetype not recognized'%self._filetype); exit(1)
         return(self._filetype)
 
-##############
+    ##############
     '''
     Getting suspicious about the database integrity? Run this script
     '''
@@ -1847,7 +1855,7 @@ class Netlist:
                 return(False)
         return(True)
 
-##############
+    ##############
     '''
     See "byNet" for data structure returned by readNetlist
     '''
@@ -1865,6 +1873,7 @@ class Netlist:
         ##
         if self._filetype == 'Allegro':
             self.Allegro = readAllegroNets(self._filename)
+            # self.Allegro = readAllegroNets(self._filename)
             self._byNet = self.Allegro.nets['NETS']
             #
             self._Devs, self._Refs = self.getAllegroDevs()
@@ -2134,46 +2143,6 @@ class nodeStruct(Netlist):
                 if partType3 == 'EMPTY':
                     self.Empty.append(ref)
     
-    def nodeCompare(self,Anet,Bnet):
-        attrOrder = ['Active','PassiveThru','PullUp','PullDown','Connector','Other']
-        for attr in attrOrder:
-            Aval = Anet.__getattribute__('_'+attr)
-            Bval = Bnet.__getattribute__('_'+attr)
-            if len(Aval) != len(Bval):
-                return(False)
-        return(True)
-
-    def nodeCompare2(self,Anet,Bnet):
-        attrOrder = ['Active','PassiveThru','PullUp','PullDown','Connector','Other']
-        for attr in attrOrder:
-            Aval = Anet.__getattribute__('_'+attr)
-            Bval = Bnet.__getattribute__('_'+attr)
-            if len(Aval) != len(Bval):
-                return(False)
-            
-        return(True)
-
-    def nodeDiff(self,Anet,Bnet):
-        attrOrder = ['Active','PassiveThru','PullUp','PullDown','Connector','Other','Empty']
-        diff = OrderedDict()
-        for attr in attrOrder:
-            Aval = Anet.__getattribute__('_'+attr)
-            Bval = Bnet.__getattribute__('_'+attr)
-            diff[attr] = SortedDict()
-            if len(Aval) != len(Bval):
-                diff[attr]['A'] = Aval
-                diff[attr]['B'] = Bval
-                #diff[attr]['A'] = '"%s"'%','.join(Aval)
-                #diff[attr]['B'] = '"%s"'%','.join(Bval)
-            else:
-                diff[attr]['A'] = Aval
-                diff[attr]['B'] = Bval
-                #diff[attr]['A'] = '"%s"'%','.join(Aval)
-                #diff[attr]['B'] = '"%s"'%','.join(Bval)
-                # diff[attr]['A'] = '" ="'
-                # diff[attr]['B'] = '" ="'
-        return(diff)
-    
     def nodeReport(self,header=False):
         attrOrder = ['Active','PassiveThru','PullUp','PullDown','Connector','Other','Empty']
         #
@@ -2201,668 +2170,3 @@ class nodeStruct(Netlist):
         struct['Other'] = ','.join(self._Other)
         return(struct)
     
-#######################################################################
-# An object to hold two Netlist objects, with intent to compare them
-class twoLists(Netlist):
-    def __init__(self, A, B):
-        self.A = A
-        self.B = B
-        self.A._brdID = 'A'  # nickname for board A
-        self.B._brdID = 'B'  # nickname for board B
-        #
-        self._allPins = None
-        self._commonPins = None
-        self._refByPinCount = None
-        self._PinsList = None
-        self._PinProperties = None
-        self._numPnsList = None
-        #
-        self._Netlist = {'A': self.A, 'B': self.B}
-        self._netXref = SortedDict({  
-            'A':SortedDict(),  
-            'B':SortedDict()  
-        })
-        self._FoundNets = SortedDict({  
-            'A':SortedDict(),  
-            'B':SortedDict()  
-        })
-        #
-        self._NetsNotes = []
-        self._PwrNotes  = []
-        self._SaveNotes = []
-        #
-        #self._refdesPairs = {'NAME': {'A': refdes, 'B': refdes} }
-        self._refdesPairs = None
-        self._refdesLookup = None
-        # debug attributes
-        #self.countPinsListSetter = 0
-
-    ################################################
-    ## Properties
-    
-    @property
-    def Netlist(self,brd=None):
-        if defined(brd):
-            return(self._Netlist[brd])
-        else:
-            return(self._Netlist)
-
-    @property
-    def NetXref(self):
-        return(self._netXref)
-    
-    @property
-    def PinsList(self):
-        return(self._PinsList)
-    @PinsList.setter
-    def PinsList(self,PinsList):
-        self._PinsList = PinsList
-        
-    @property
-    def numPnsList(self):
-        return(self._numPnsList)
-    @numPnsList.setter
-    def numPnsList(self,num):
-        self._numPnsList = num
-    
-    @property
-    def refdesPairs(self):
-        if not defined(self._refdesPairs):
-            self._refdesPairs = SortedDict()
-        return(self._refdesPairs)
-    @refdesPairs.setter
-    def refdesPairs(self,pairs):
-        self._refdesPairs, self._refdesLookup = self.setRefdesPairs(pairs)
-        return(self._refdesPairs)
-    
-    @property
-    def refdesLookup(self):
-        if not defined(self._refdesLookup):
-            self._refdesLookup = SortedDict()
-        return(self._refdesLookup)
-
-    @property
-    def allPins(self):
-        if not defined(self._allPins):
-            self._allPins = self.getAllPins()
-        return(self._allPins)
-    
-    @property
-    def commonPins(self):
-        if not defined(self._commonPins):
-            self._commonPins = self.getCommonPins()
-        return(self._commonPins)
-    
-   ################################################
-    ##
-    
-    def setRefdesPairs(self,pairs):
-        refdesPairs = SortedDict()
-        for name,brds in pairs.items():
-            refdesPairs[name] = OrderedDict({'NAME':name, 'A':brds['A'], 'B':brds['B']})
-        #
-        refdesLookup = SortedDict()
-        for name,pair in refdesPairs.items():
-            refdesLookup['N_'+name]      = refdesPairs[name]
-            refdesLookup['A_'+pair['A']] = refdesPairs[name]
-            refdesLookup['B_'+pair['B']] = refdesPairs[name]
-        #print('refdesLookup:',json.dumps(list(refdesLookup.keys()), indent=2)); exit(1)
-        return([refdesPairs, refdesLookup])
-    
-    def getNetXref(self,Brd):  # consider using self.NetXref['A'][Anet]; returns Bnet
-        return(self._netXref[Brd])
-        #
-    def setNetXref(self,Anet,Bnet):
-        self._netXref['A'][Anet] = Bnet;
-        self._netXref['B'][Bnet] = Anet;
-    
-    def getAllPins(self):
-        '''
-        Make a list of pin counts. Just a simple list
-        '''
-        nums_a = list(self.A.pinCount.keys())
-        nums_b = list(self.B.pinCount.keys())
-        '''
-        Combine A and B's pincount list so we can display them side by side, below
-        This is just a list of numbers. We'll use it to compare A and B
-        '''
-        allPins = SortedDict()  # using a Dict guarrantees uniqueness
-        for n in nums_a:
-            allPins[n] = n
-        for n in nums_b:
-            allPins[n] = n
-        allPins = list(allPins.keys())
-        allPins.reverse()  # Biggest to smallest
-        return(allPins)
-
-    def getCommonPins(self):
-        '''
-        Make a list of pin counts. Just a simple list
-        '''
-        nums_a = list(self.A.pinCount.keys())
-        nums_b = list(self.B.pinCount.keys())
-        '''
-        Combine A and B's pincount list so we can display them side by side, below
-        This is just a list of numbers. We'll use it to compare A and B
-        '''
-        commonPins = []
-        for n in nums_a:
-            if n in nums_b:
-                commonPins.append(n)
-        commonPins.sort()
-        commonPins.reverse()  # Biggest to smallest
-        return(commonPins)
-
-    def getObj(self,Name):
-        #print('Name: "%s"'%str(Name)); 
-        if not Name in self.Netlist:
-            print('ERROR: getObj: cant find object "%s"'%Name);exit(1)
-        return(self.Netlist[Name])
-
-    '''
-    RefDes-by-pincount data structure:
-    RefDes -> {
-        <Pincount X>: {  # List of refdes in A & B with pincount = X
-          'A': 
-            [ # Board 'A' list of refdes with pincount X
-              refdes1, refdes2, ...
-            ],
-          'B': 
-            [ # Board 'B' list of refdes with pincount X
-              refdes1, refdes2, ...
-            ]
-          },
-        <Pincount Y>: {  # List of refdes in A & B with pincount = Y
-          'A': [ # Board 'A' list of refdes with pincount Y
-                 refdes1, refdes2, ...
-               ],
-          'B': [ # Board 'B' list of refdes with pincount Y
-                 refdes1, refdes2, ...
-                ]
-        },
-        ...
-      }
-    '''
-    def refdesByPincount(self,PinsList=None):
-        if not defined(self._PinsList) and not defined(PinsList):
-            print('refdesByPincount: ERROR: PinsList not defined'); exit(1)
-        elif defined(PinsList):
-            self._PinsList = PinsList
-            self._refByPinCount = None
-        #
-        if not defined(self._refByPinCount):
-            if not defined(self._numPnsList) or \
-            (self._numPnsList > len(self._PinsList)):
-                self._numPnsList = len(self._PinsList)
-            PinsList = self._PinsList[:self._numPnsList]
-            A_pinCount = self.A.pinCount; B_pinCount = self.B.pinCount
-            RefDes = OrderedDict()
-            for n in PinsList:
-                if not n in RefDes:
-                    RefDes[n] = SortedDict()
-                RefDes[n]['A'] = A_pinCount[n]
-                RefDes[n]['B'] = B_pinCount[n]
-                #print('refdes:',RefDes[n]['A'][0],RefDes[n]['B'][0])
-            self._refByPinCount = RefDes
-        return(self._refByPinCount)
-    
-    def diffNetsByName(self,AnetName,BnetName):
-        Anet = self.A.flatNet[AnetName]
-        Bnet = self.B.flatNet[BnetName]
-        netDiffs = SortedDict({'A':[], 'B':[]})
-        for Apin in Anet:
-            if Apin not in Bnet:
-                #netDiffs['A'].append('A.%s'%Apin)
-                netDiffs['A'].append('%s'%Apin)
-        for Bpin in Bnet:
-            if Bpin not in Anet:
-                #netDiffs['B'].append('B.%s'%Bpin)
-                netDiffs['B'].append('%s'%Bpin)
-        #print('\nnetDiffs:\n%s'%json.dumps(netDiffs, indent=2)); exit(1)
-        return(netDiffs)
-        
-    def diffXnetsByName(self,AnetName,BnetName):
-        Anet = self.A.flatXnet[AnetName]
-        Bnet = self.B.flatXnet[BnetName]
-        netDiffs = SortedDict({'A':[], 'B':[]})
-        for Apin in Anet:
-            if Apin not in Bnet:
-                #netDiffs['A'].append('A.%s'%Apin)
-                netDiffs['A'].append('%s'%Apin)
-        for Bpin in Bnet:
-            if Bpin not in Anet:
-                #netDiffs['B'].append('B.%s'%Bpin)
-                netDiffs['B'].append('%s'%Bpin)
-        #print('\nnetDiffs:\n%s'%json.dumps(netDiffs, indent=2)); exit(1)
-        return(netDiffs)
-    
-    #####################
-    
-    def found(self,brd,pin,net):
-        # Keep a memory of netlists we have seen
-        found = net in self._FoundNets[brd]
-        self._FoundNets[brd][net] = 1
-        #print('board=%s pin=%s net=%s found=%s'%(brd,pin,net,found))
-        return(found)  # Have we seen this net before? True/False
-
-    '''
-    Note: A & B can be either 'A' or 'B'
-    '''
-    def getPins(self,A,Aref,B,Bref):
-        #print('in getPins')
-        Aobj = self.getObj(A); Bobj = self.getObj(B)
-        #print('A.nick="%s" B.nick="%s"'%(Aobj.nick,Bobj.nick))
-        # This routine guarrantees that the two pin lists are aligned one-to-one
-        Apins = list(Aobj.byRef[Aref].keys())
-        Bpins = list(Bobj.byRef[Bref].keys())
-        foundPins = SortedDict({'A': [], 'B': []})
-        lostPins  = SortedDict({'A': [], 'B': []})
-        #
-        for Apin in Apins:
-            if Apin in Bpins:
-                Bpin = Apin
-                Bpins.remove(Bpin)
-                foundPins['A'].append(Apin)
-                foundPins['B'].append(Bpin)
-            else:
-                lostPins['A'].append(Apin)
-        lostPins['B'].extend(Bpins)
-        #
-        foundPins['A'].sort(); foundPins['B'].sort()
-        lostPins['A'].sort(); lostPins['B'].sort()
-        #
-        if len(lostPins['A']):
-            self._SaveNotes.append('Lost pins, %s.%s.%s'%(Aobj.nick,Aref,str(lostPins['A'])))
-        if len(lostPins['B']):
-            self._SaveNotes.append('Lost pins, %s.%s.%s'%(Bobj.nick,Bref,str(lostPins['B'])))
-        return([foundPins,lostPins])
-
-#####################
-#####################
-    '''
-    Note: A & B can be either 'A' or 'B'
-    '''
-    def EquateNetNames(self,A,Aref,B,Bref):
-        # The heart of this method of netlist comparing. One RefDes pair at a time
-        # This assumes someone knows what refdes's on brd 'A' correspond to brd 'B'
-        #
-        # Output is through print()'s to stdout
-        Aobj = self.getObj(A); Bobj = self.getObj(B)
-        IgnoreList = Aobj.IgnoreList + Bobj.IgnoreList
-        #
-        A_byRef = Aobj.byRef; A_flatXnet = Aobj.flatNet
-        B_byRef = Bobj.byRef; B_flatXnet = Bobj.flatNet
-        #
-        foundPins, x = self.getPins(A,Aref,B,Bref)  # returns: [foundPins,lostPins] 
-        #print(json.dumps(lostPins, indent=2)); exit(1)
-        #
-        Apins = foundPins['A'];  # use the foundPins list; ignore lostPins
-        #print('%s: %s'%(Aref,','.join(Apins))); exit(1)
-        Bpins = foundPins['B'];  # use the foundPins list; ignore lostPins 
-        #print('%s: %s'%(Bref,','.join(Bpins))); exit(1)
-        #
-        #print('#Apins=%d'%len(Apins),'#Bpins=%d'%len(Bpins)); exit(1)
-        print('Examining refdes %s.%s & %s.%s - %d & %d pins each'% 
-            (A,Aref,B,Bref,len(Apins),len(Bpins)))
-        for Apin,Bpin in zip(Apins,Bpins):
-            Anet = A_byRef[Aref][Apin]['NET']
-            Bnet = B_byRef[Bref][Bpin]['NET']
-            #
-            self.A.isXnet(Anet)
-            self.B.isXnet(Bnet)
-            #
-            Afound=self.found('A',Apin,Anet); Bfound=self.found('B',Bpin,Bnet)
-            if Afound != Bfound: 
-                if not Anet in IgnoreList and not Bnet in IgnoreList: 
-                    netDiffs = self.diffNetsByName(Anet,Bnet)
-                    note = '%s.%s.%s,%s,%s.%s.%s,%s,%d,%d,'% \
-                        (A,Aref,Apin,Anet, \
-                         B,Bref,Bpin,Bnet, \
-                         #str(A_flatXnet[Anet]),str(B_flatXnet[Bnet])) \
-                         len(self.A.flatNet[Anet]), \
-                         len(self.B.flatNet[Bnet]) \
-                        )
-                    if self.A.isPowerNet(Anet) or self.B.isPowerNet(Bnet):
-                        note += 'Power net?'
-                    if self.A.isNoConnectNet(Anet) or self.B.isNoConnectNet(Bnet):
-                        note += 'No Connect net?'
-                    note += ','
-                    #note += '%s,'%(self.A.getPinType(Aref,Apin))
-                    self._SaveNotes.append(note)
-            if not Afound and not Bfound:
-                self.setNetXref(Anet,Bnet)
-                note =  \
-                    '%s.%s.%s,%s,'%(A,Aref,Apin,Anet) +  \
-                    '%s.%s.%s,%s,'%(B,Bref,Bpin,Bnet) +  \
-                    '%d,%d,'%(  \
-                        len(self.A.flatNet[Anet]),  \
-                        len(self.B.flatNet[Bnet])  \
-                    )
-                if self.A.isPowerNet(Anet) or self.B.isPowerNet(Bnet):
-                    self._PwrNotes.append(note)
-                else:
-                    self._NetsNotes.append(note)
-        print()
-        
-    def checkNetNames(self):
-        #print('in checkNetNames')
-        RefDes = self.refdesByPincount()
-        for numPins in RefDes.keys():
-            Arefs = RefDes[numPins]['A']
-            Brefs = RefDes[numPins]['B']
-            #
-            for Aref,Bref in zip(Arefs,Brefs):
-                self.EquateNetNames('A',Aref,'B',Bref)
-        self.reportNetsNotes()
-        self.reportPwrNotes()
-    
-    '''
-    Note: A & B can be either 'A' or 'B'
-    '''
-    def checkPin2PinAtRefdes(self,A,Aref,B,Bref):
-        #print('in checkPin2PinAtRefdes')
-        self.EquateNetNames(A,Aref,B,Bref)
-        self.reportNetsNotes()
-        self.reportPwrNotes()
-    
-#####################
-#####################
-
-    '''
-    A quick routine to show how nets, Xnets and their cross-reference is used
-    '''
-    def demoXnet(self,Brd):  # "Brd" is either 'A' or 'B'
-        pnote = []
-        A = self.getObj(Brd)
-        for ref,pinsDct in A.byRef.items():
-            pnote.append('Refdes %s:\n'%ref)
-            for pin,propsDct in pinsDct.items():
-                net = propsDct['NET']
-                pnote.append(' Net %s is'%net)
-                if A.isXnet(net):
-                    pnote.append(' an Xnet,')
-                    pnote.append(' %s\n'%A.XnetXref[net])
-                else:
-                    pnote.append(' not an Xnet\n')
-        print(''.join(pnote))
-    
-    '''
-    Note: A & B can be either 'A' or 'B'
-    '''
-    def EquatePin2PinConnections(self,A,Aref,B,Bref):
-        Aobj = self.getObj(A);   Bobj = self.getObj(B)
-        A_h = nodeStruct(Aobj); B_h = nodeStruct(Bobj)
-        #
-        A_byRef = Aobj.byRef; A_flatXnet = Aobj.flatXnet
-        B_byRef = Bobj.byRef; B_flatXnet = Bobj.flatXnet
-        ##
-        ###############
-        ##
-        foundPins, x = self.getPins(A,Aref,B,Bref)  # returns: [foundPins,lostPins] 
-        Apins = foundPins['A'];  # use the foundPins list; ignore lostPins
-        Bpins = foundPins['B'];  # use the foundPins list; ignore lostPins
-        print('Examining refdes %s.%s & %s.%s - %d & %d pins each'% 
-            (A,Aref,B,Bref,len(Apins),len(Bpins)))
-        #
-        lclXnets = []
-        #
-        print('Xnet difference report for %s.%s and %s.%s\n'%(A,Aref,B,Bref))
-        header = []
-        header.append('%s Xnet name,%s Xnet name,'%(A,B))
-        for attrName in A_h.nodeReport(header=True):
-            if attrName == 'Active':
-                header.append('%s Dest dev,'%A)
-            header.append('%s %s,'%(A,attrName))
-            if attrName == 'Active':
-                header.append('%s Dest dev,'%B)
-            header.append('%s %s,'%(B,attrName))
-        header.append('" "')
-        print(''.join(header))
-        #
-        for Apin,Bpin in zip(Apins,Bpins):
-            ###########
-            AnetName = Aobj.toXnet(A_byRef[Aref][Apin]['NET'])
-            Anet = Aobj.byXnet[AnetName]
-            A_h.NetName = AnetName
-            Aactives = A_h.Active #[:5]
-            #names = list(self.refdesLookup.keys())
-            #print('refdesLookup:',json.dumps(names, indent=2)); exit(1)
-            #
-            #if Aref in Aactives:
-            #    Aactives.remove(Aref)
-            Aalias = []
-            for actv in Aactives:
-                if 'A_'+actv in self.refdesLookup:
-                    Aalias.append(self.refdesLookup['A_'+actv]['NAME'])
-            if len(Aalias):
-                Aalias = '"%s",'%','.join(Aalias)
-            else:
-                Aalias = '"",'
-            # try:
-                # Aalias = self.refdesLookup['A_'+Aactives[0]]['NAME']
-            # except (ValueError, KeyError, IndexError):
-                # Aalias = ""
-            ###########
-            BnetName = Bobj.toXnet(B_byRef[Bref][Bpin]['NET'])
-            Bnet = Bobj.byXnet[BnetName]
-            B_h.NetName = BnetName
-            Bactives = B_h.Active #[:5]
-            #if Bref in Bactives:
-            #    Bactives.remove(Bref)
-            Balias = []
-            for actv in Bactives:
-                if 'B_'+actv in self.refdesLookup:
-                    Balias.append(self.refdesLookup['B_'+actv]['NAME'])
-            if len(Balias):
-                Balias = '"%s",'%','.join(Balias)
-            else:
-                Balias = '"",'
-            # try:
-                # Balias = self.refdesLookup['B_'+Bactives[0]]['NAME']
-            # except (ValueError, KeyError, IndexError):
-                # Balias = ""
-            ###########
-            ##
-            lclXnets.append(AnetName)
-            #
-            self.setNetXref(AnetName,BnetName)
-            #
-            if (Aobj.isIgnoreNet(AnetName) or Aobj.isNoConnectNet(AnetName)) and  \
-               (Bobj.isIgnoreNet(BnetName) or Bobj.isNoConnectNet(BnetName)):
-                None
-            elif Aobj.isPowerNet(AnetName) or Bobj.isPowerNet(BnetName):
-                if not (Aobj.isPowerNet(AnetName) and Bobj.isPowerNet(BnetName)):
-                    print('WARNING: Two nets found where only one is attached to power - ',end='')
-                    print('%s net %s and %s net %s'%(Aobj.nick,AnetName,Bobj.nick,BnetName))
-            else:
-                #print('Flat Xnet:',AnetName,BnetName,A_flatXnet[AnetName][:5],B_flatXnet[BnetName][:5])
-                #print('%s,%s'%(A_h.nodeReport(),B_h.nodeReport()))
-                if not A_h.nodeCompare(A_h,B_h):
-                    #print('nodeReport:,,%s'%',,'.join(A_h.nodeReport()))  # this shows its all there!!??
-                    print('%s,%s,'%(AnetName,BnetName), end='')
-                    for attr,diffs in A_h.nodeDiff(A_h,B_h).items():
-                        if attr in ['PassiveThru','PullUp','PullDown']:
-                            refs = []
-                            for ref in diffs['A']:
-                                refs.append('%s=%s'%(ref,Aobj.getValByRef(ref)))
-                            diffs['A'] = '"%s"' % ','.join(refs)
-                            refs = []
-                            for ref in diffs['B']:
-                                refs.append('%s=%s'%(ref,Bobj.getValByRef(ref)))
-                            diffs['B'] = '"%s"' % ','.join(refs)
-                        else:
-                            diffs['A'] = '"%s"' % ','.join(diffs['A'])
-                            diffs['B'] = '"%s"' % ','.join(diffs['B'])
-                        #
-                        if not AnetName in Aobj.NoConnectList:
-                            if attr == 'Active':
-                                print(Aalias, end='')
-                            print('%s,' % diffs['A'], end='')
-                        else:
-                            if attr == 'Active':
-                                print('" "," ",', end='')
-                            else:
-                                print('" ",', end='')
-                        #
-                        if not BnetName in Bobj.NoConnectList:
-                            if attr == 'Active':
-                                print(Balias, end='')
-                            print('%s,' % diffs['B'], end='')
-                        else:
-                            if attr == 'Active':
-                                print('" "," ",', end='')
-                            else:
-                                print('" ",', end='')
-                    #print('Xnets different: %s, %s'%(AnetName,BnetName))
-                    print('" "')
-            '''
-            print('%s'%json.dumps(A_h.dumpAttributes(), indent=2))
-                print('%s'%json.dumps(B_h.dumpAttributes(), indent=2));exit(1)
-                # print('%s.%s,%s,%s,%s,,'%(Aref,Apin,Aalias,';'.join(Aactives),AnetName),end='')
-                # print('%s.%s,%s,%s,%s, '%(Bref,Bpin,Balias,';'.join(Bactives),BnetName),end='')
-                # print()
-            '''
-        
-#####################
-#####################
-    '''
-    Note: A & B can be either 'A' or 'B'
-    '''
-    def reportMissingPinsByRefdes(self,A,Aref,B,Bref):
-        #print('in reportMissingPinsByRefdes')
-        Aobj = self.getObj(A); Bobj = self.getObj(B)
-        #print('Compare pins of %s.%s to %s.%s'%(Aobj.nick,Aref,Bobj.nick,Bref))
-        x, lostPins = self.getPins(A,Aref,B,Bref);  # returns: [foundPins,lostPins]
-        #print(json.dumps(lostPins, indent=2)); exit(1)
-        
-        Apins = lostPins['A']; Bpins = lostPins['B']
-        print('Found these extra pins:')
-        print('Extra pins on %s.%s: '%(Aobj.nick,Aref),end='');
-        print('%s'%', '.join(Apins)) if len(Apins)>0 else print('None')
-        print('Extra pins on %s.%s: '%(Bobj.nick,Bref),end='');
-        print('%s'%', '.join(Bpins)) if len(Bpins)>0 else print('None')
-        return()
-        
-    #####################
-    
-    def reportPinCounts(self,ext='TXT'):
-        allPins = self.allPins
-        if defined(self.numPnsList):
-            if self.numPnsList < len(allPins):
-                allPins = allPins[:self.numPnsList]
-        if ext=='TXT':
-            '''
-            Create a table. We can see the differences between board A and B
-            '''
-            A_likeRefs = self.A.likeRefs
-            B_likeRefs = self.B.likeRefs
-            if defined(self.numPnsList):
-                if self.numPnsList < len(allPins):
-                    allPins = allPins[:self.numPnsList]
-            for n in allPins:
-                print('Pin count: %4d   '%n,end='')
-                print('A: %4d   '%A_likeRefs[n],end='') \
-                    if n in A_likeRefs else print('A:        ',end='')
-                print('B: %4d'%B_likeRefs[n]) \
-                    if n in B_likeRefs else print('B:')
-        elif ext=='CSV':
-            '''
-            Create a CSV spreadsheet comparing components by pincount between board A and B
-            This is a pretty useful output for the first-pass study of two boards
-            '''
-            A_pinCount = self.A.pinCount; B_pinCount = self.B.pinCount
-            A_RefDes = self.A.RefDes; B_RefDes = self.B.RefDes
-            print('Pin Count,',end='')
-            print(self.A.filename+' Board RefDes,'+self.A.filename+' Part Name,',end='')
-            print(self.B.filename+' Board RefDes,'+self.B.filename+' Part Name')
-            #
-            for n in allPins:
-                print('%d,'%n,end='')  # print pin count
-                #
-                if n in A_pinCount:  # print board A refdes and part_name
-                    print('"%s",'%','.join(A_pinCount[n]),end='') 
-                    print('"%s",'%A_RefDes[A_pinCount[n][0]]['PART_NAME'],end='') 
-                else:
-                    print(',,',end='')
-                #
-                if n in B_pinCount:  # print board B refdes and part_name
-                    print('"%s",'%','.join(B_pinCount[n]),end='') 
-                    print('"%s",'%B_RefDes[B_pinCount[n][0]]['PART_NAME'],end='') 
-                #
-                print()
-        else:
-            print('reportPinCounts: Unrecognized extension type'); exit(1)
-    
-#######################
-    def reportNetsNotes(self):
-        if len(self._NetsNotes):
-            print()  # CR
-            print('Signal Net Notes:')
-            print('A: refdes.pin,net,B: refdes.pin,net,',end='')
-            print('# A net pins,# B net pins,Notes,')
-            #print('# ReportNotes:',len(self._SaveNotes))
-            print('\n'.join(self._NetsNotes))
-            return(1)
-        else:
-            return(0)
-    
-    def reportPwrNotes(self):
-        if len(self._PwrNotes):
-            print()  # CR
-            print('Power Net Notes:')
-            print('A: refdes.pin,net,B: refdes.pin,net,',end='')
-            print('# A net pins,# B net pins,Notes,')
-            #print('# ReportNotes:',len(self._SaveNotes))
-            print('\n'.join(self._PwrNotes))
-            return(1)
-        else:
-            return(0)
-    
-    def reportNotes(self):
-        if len(self._SaveNotes):
-            print()  # CR
-            print('RED FLAGS:')
-            print('A: refdes.pin,net,B: refdes.pin,net,',end='')
-            print('# A pins not in B,# B pins not in A,Notes,')
-            #print('# ReportNotes:',len(self._SaveNotes))
-            print('\n'.join(self._SaveNotes))
-            return(1)
-        else:
-            return(0)
-        
-    def straightNetlistCompare(self):
-        A_flatNet = self.A.flatNet.copy()
-        B_flatNet = self.B.flatNet.copy()
-        #
-        A_NetNames = list(A_flatNet.keys())
-        B_NetNames = list(B_flatNet.keys())
-        #
-        for net in A_NetNames:
-            if net in B_NetNames:
-                pinsA = ','.join(sorted(A_flatNet[net]))
-                pinsB = ','.join(sorted(B_flatNet[net]))
-                if pinsA == pinsB:
-                    del A_flatNet[net]
-                    del B_flatNet[net]
-        #
-        if len(A_flatNet) == 0 and len(B_flatNet) == 0:
-            print('Netlist %s and %s are same'%(self.A.filename,self.B.filename))
-        else:
-            print('Change list:')
-            A_NetNames = list(A_flatNet.keys())
-            B_NetNames = list(B_flatNet.keys())
-            #
-            for net in A_NetNames:
-                if net in B_NetNames:
-                    print('%4d %4d %s'%(len(A_flatNet[net]),len(B_flatNet[net]),net))
-                    del A_flatNet[net]
-                    del B_flatNet[net]
-            #
-            print('\nNets from A, deleted:')
-            for net in A_flatNet.keys():
-                print('%s'%net)
-            print('\nNets from B, added:')
-            for net in B_flatNet.keys():
-                print('%s'%net)
-    
-#######################################################################
